@@ -1,0 +1,99 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# Application instance bootstrap (Amazon Linux 2023)
+#
+# Rendered by Terraform via templatefile(). Keep this thin: anything that
+# belongs to a release belongs in the CodeDeploy bundle, not here, so that
+# shipping a change never requires replacing an instance.
+#
+# What this script does NOT do, on purpose:
+#   * install or start sshd configuration of any kind
+#   * write credentials to disk (config comes from Parameter Store at runtime)
+#   * fetch anything from an unauthenticated source
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
+AWS_REGION="${region}"
+APP_PORT="${app_port}"
+APP_LOG_GROUP="${app_log_group}"
+AGENT_LOG_GROUP="${agent_log_group}"
+PARAMETER_PATH="${parameter_store_path}"
+METRICS_NAMESPACE="${metrics_namespace}"
+APP_DIR=/opt/hipaa-demo-app
+
+dnf -y update
+dnf -y install ruby wget nodejs amazon-cloudwatch-agent
+
+# --- CodeDeploy agent ------------------------------------------------------
+# The agent polls CodeDeploy over TLS from inside the private subnet; it needs
+# no inbound connectivity. This is what makes deployment possible without SSH.
+cd /tmp
+wget -q "https://aws-codedeploy-$AWS_REGION.s3.$AWS_REGION.amazonaws.com/latest/install" -O codedeploy-install
+chmod +x codedeploy-install
+./codedeploy-install auto
+systemctl enable --now codedeploy-agent
+
+# --- Application skeleton --------------------------------------------------
+# CodeDeploy owns the contents of $APP_DIR from here on.
+useradd --system --home-dir "$APP_DIR" --shell /sbin/nologin appuser || true
+mkdir -p "$APP_DIR"
+chown appuser:appuser "$APP_DIR"
+
+# Runtime configuration for the systemd unit that the deployment installs.
+# Values are read from Parameter Store at boot; nothing sensitive is baked into
+# the AMI, the launch template or this script.
+mkdir -p /etc/hipaa-demo-app
+cat > /etc/hipaa-demo-app/app.env <<ENVFILE
+APP_PORT=$APP_PORT
+AWS_REGION=$AWS_REGION
+PARAMETER_PATH=$PARAMETER_PATH
+LOG_GROUP=$APP_LOG_GROUP
+ENVFILE
+chmod 0640 /etc/hipaa-demo-app/app.env
+chown root:appuser /etc/hipaa-demo-app/app.env
+
+# --- CloudWatch agent ------------------------------------------------------
+# Ships application and deployment logs off the instance continuously, so the
+# audit record survives the instance being replaced by the next blue/green
+# deployment or terminated by the Auto Scaling group.
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<CWCONFIG
+{
+  "agent": { "metrics_collection_interval": 60, "run_as_user": "root" },
+  "metrics": {
+    "namespace": "$METRICS_NAMESPACE",
+    "append_dimensions": { "AutoScalingGroupName": "\$${aws:AutoScalingGroupName}", "InstanceId": "\$${aws:InstanceId}" },
+    "metrics_collected": {
+      "mem": { "measurement": ["mem_used_percent"] },
+      "disk": { "measurement": ["used_percent"], "resources": ["/"] }
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "$APP_DIR/logs/application.log",
+            "log_group_name": "$APP_LOG_GROUP",
+            "log_stream_name": "{instance_id}/application",
+            "retention_in_days": -1
+          },
+          {
+            "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
+            "log_group_name": "$AGENT_LOG_GROUP",
+            "log_stream_name": "{instance_id}/codedeploy-agent",
+            "retention_in_days": -1
+          }
+        ]
+      }
+    }
+  }
+}
+CWCONFIG
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+echo "bootstrap complete: awaiting first CodeDeploy revision"

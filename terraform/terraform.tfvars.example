@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Example variable values.
+#
+#   cp terraform.tfvars.example terraform.tfvars   # then edit
+#
+# terraform.tfvars itself is gitignored: it is where account-specific values
+# and, in many real repositories, sensitive ones end up. Keep it out of version
+# control even when it looks harmless today.
+# ---------------------------------------------------------------------------
+
+aws_region   = "us-east-1"
+project_name = "hipaa-demo"
+environment  = "prod"
+
+# --- Network ---------------------------------------------------------------
+vpc_cidr                = "10.20.0.0/16"
+availability_zone_count = 2
+
+# One NAT gateway is cheaper; set to false for production so a single AZ
+# failure cannot take out egress for the whole application tier.
+single_nat_gateway = true
+
+# --- TLS -------------------------------------------------------------------
+# REQUIRED for any environment that will handle ePHI. Leaving this empty
+# creates a plain HTTP listener, which is acceptable only for a throwaway
+# sandbox with synthetic data.
+#
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+certificate_arn = ""
+
+# --- Data ------------------------------------------------------------------
+db_instance_class        = "db.t4g.medium"
+db_allocated_storage     = 50
+db_backup_retention_days = 35
+db_multi_az              = true
+db_deletion_protection   = true
+
+# --- Compute ---------------------------------------------------------------
+instance_type        = "t3.small"
+app_port             = 8080
+asg_min_size         = 2
+asg_max_size         = 6
+asg_desired_capacity = 2
+
+# --- Retention -------------------------------------------------------------
+log_retention_days       = 365
+audit_log_retention_days = 2557 # ~7 years
+
+# --- Deployment ------------------------------------------------------------
+# deployment_notification_email      = "platform-oncall@example.com"
+blue_fleet_termination_wait_minutes = 15

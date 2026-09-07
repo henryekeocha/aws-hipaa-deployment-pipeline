@@ -1,0 +1,14 @@
+{
+  "name": "hipaa-demo-app",
+  "version": "1.0.0",
+  "description": "Minimal service used to demonstrate the CodeDeploy blue/green pipeline. Deliberately dependency-free.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,39 @@
+[Unit]
+Description=HIPAA demo application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Runs as an unprivileged service account, never as root. A remote code
+# execution in the application therefore does not immediately yield a root
+# shell on a host inside the PHI subnet.
+User=appuser
+Group=appuser
+
+WorkingDirectory=/opt/hipaa-demo-app
+EnvironmentFile=/etc/hipaa-demo-app/app.env
+ExecStart=/usr/bin/node /opt/hipaa-demo-app/server.js
+
+Restart=on-failure
+RestartSec=5
+
+# SIGTERM triggers the graceful-drain path in server.js; give it time to finish.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Systemd sandboxing. These are cheap and they meaningfully reduce what a
+# compromised process can reach on the host.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/hipaa-demo-app/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,78 @@
+# ---------------------------------------------------------------------------
+# CodeDeploy AppSpec
+#
+# The bundle root is this directory (app/), so paths below are relative to it:
+#
+#   aws deploy push \
+#     --application-name hipaa-demo-prod-app \
+#     --s3-location s3://<artifacts-bucket>/releases/app.zip \
+#     --source app/
+#
+# Every hook runs as root on the instance and is expected to exit non-zero on
+# failure. A non-zero exit from any hook fails the deployment, and because the
+# deployment group has auto_rollback_configuration enabled, a failure here is
+# what triggers the automatic return to the previous fleet. The hooks are
+# therefore written to fail loudly rather than to paper over problems.
+# ---------------------------------------------------------------------------
+version: 0.0
+os: linux
+
+files:
+  - source: sample-app
+    destination: /opt/hipaa-demo-app
+    overwrite: true
+
+file_exists_behavior: OVERWRITE
+
+permissions:
+  - object: /opt/hipaa-demo-app
+    owner: appuser
+    group: appuser
+    mode: "0750"
+    type:
+      - directory
+      - file
+  - object: /opt/hipaa-demo-app/scripts
+    owner: root
+    group: root
+    mode: "0750"
+    pattern: "**"
+    type:
+      - file
+
+hooks:
+  # Runs on the currently-serving revision before its files are replaced.
+  # Stops the service cleanly so in-flight requests finish rather than being
+  # cut off mid-response.
+  ApplicationStop:
+    - location: sample-app/scripts/application_stop.sh
+      timeout: 60
+      runas: root
+
+  # Prepares the host: verifies the runtime is present and clears the previous
+  # revision's files so no stale code can survive into the new release.
+  BeforeInstall:
+    - location: sample-app/scripts/before_install.sh
+      timeout: 300
+      runas: root
+
+  # Fetches configuration from Parameter Store into a root-owned env file and
+  # installs the systemd unit. Secrets land on disk only in a 0640 file owned
+  # by root, readable by the service account, and never in the bundle itself.
+  AfterInstall:
+    - location: sample-app/scripts/after_install.sh
+      timeout: 300
+      runas: root
+
+  ApplicationStart:
+    - location: sample-app/scripts/application_start.sh
+      timeout: 120
+      runas: root
+
+  # The gate. Polls the health endpoint on the green instance before CodeDeploy
+  # shifts any production traffic to it. If this exits non-zero, the release is
+  # rolled back and no user ever reaches the bad revision.
+  ValidateService:
+    - location: sample-app/scripts/validate_service.sh
+      timeout: 180
+      runas: root

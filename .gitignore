@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# Terraform
+# ---------------------------------------------------------------------------
+# State files contain resource identifiers, endpoint addresses and, in many
+# configurations, sensitive values. They belong in an encrypted remote backend,
+# never in version control.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Real variable files -- account IDs, certificate ARNs, and whatever else ends
+# up here over time. The .example file IS tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!terraform.tfvars.example
+
+# Plan output can contain the full rendered configuration, including values
+# marked sensitive.
+*.tfplan
+tfplan
+plan.out
+
+# The dependency lock file IS tracked on purpose: it pins provider versions and
+# checksums so every apply uses the same, verified provider binaries.
+# .terraform.lock.hcl
+
+# Override files are for local experimentation only.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---------------------------------------------------------------------------
+# Secrets and local environment
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+.aws/
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+logs/
+*.log
+
+# Build artifacts from `aws deploy push`
+*.zip
+*.tar.gz
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

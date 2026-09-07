@@ -1,0 +1,29 @@
+output "vpc_id" {
+  description = "ID of the VPC."
+  value       = aws_vpc.main.id
+}
+
+output "vpc_cidr_block" {
+  description = "CIDR block of the VPC."
+  value       = aws_vpc.main.cidr_block
+}
+
+output "public_subnet_ids" {
+  description = "IDs of the public subnets (ALB and NAT gateways only)."
+  value       = aws_subnet.public[*].id
+}
+
+output "private_subnet_ids" {
+  description = "IDs of the private subnets (application and data tiers)."
+  value       = aws_subnet.private[*].id
+}
+
+output "availability_zones" {
+  description = "Availability zones in use."
+  value       = local.azs
+}
+
+output "nat_gateway_ids" {
+  description = "IDs of the NAT gateways providing outbound-only internet access."
+  value       = aws_nat_gateway.main[*].id
+}
