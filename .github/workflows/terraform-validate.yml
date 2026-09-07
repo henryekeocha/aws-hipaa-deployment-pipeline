@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# Terraform static validation
+#
+# Runs on every push and pull request to main. Everything here is offline: no
+# AWS credentials, no plan, no apply. `terraform validate` checks syntax, type
+# correctness, and module input/output wiring by consulting the provider
+# schema, which needs the provider binary but never an AWS API call. That makes
+# this workflow safe to run on a public repository with zero secrets
+# configured, and safe to accept from a fork.
+#
+# Terraform is pinned to 1.5.7 -- the floor declared by required_version in
+# terraform/providers.tf (">= 1.5.0"). Pinning the minimum rather than the
+# latest means CI proves that the declared constraint is actually true, instead
+# of quietly depending on a newer feature than the constraint admits.
+# ---------------------------------------------------------------------------
+name: Terraform validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only. The job needs nothing else, and a workflow that cannot write
+# cannot be turned into a supply-chain foothold by a malicious pull request.
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TERRAFORM_VERSION: "1.5.7"
+
+jobs:
+  validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          # The wrapper rewrites stdout to feed step outputs; without it the
+          # exit codes and output below are Terraform's own.
+          terraform_wrapper: false
+
+      # Repo-root and recursive, so the root module and all seven child modules
+      # are covered in one pass.
+      - name: Check formatting
+        run: terraform fmt -recursive -check -diff
+
+      # -backend=false skips backend initialisation entirely, so no S3 state
+      # bucket and no credentials are required. Providers still download, which
+      # is what validate needs in order to check resource schemas.
+      - name: Initialize (no backend)
+        working-directory: terraform
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        working-directory: terraform
+        run: terraform validate -no-color

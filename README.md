@@ -1,5 +1,7 @@
 # HIPAA-aligned AWS deployment pipeline
 
+[![Terraform validate](https://github.com/henryekeocha/aws-hipaa-deployment-pipeline/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/henryekeocha/aws-hipaa-deployment-pipeline/actions/workflows/terraform-validate.yml)
+
 A scoped-down reference implementation of the deployment pattern I use for
 AWS workloads that handle regulated health data: infrastructure defined
 entirely in Terraform, releases shipped by CodeDeploy blue/green with automatic
@@ -172,6 +174,26 @@ cd terraform
 terraform fmt -recursive -check
 terraform init -backend=false && terraform validate
 ```
+
+### CI
+
+[`.github/workflows/terraform-validate.yml`](.github/workflows/terraform-validate.yml)
+runs those same two checks on every push and pull request to `main`:
+
+- **`terraform fmt -recursive -check -diff`** from the repository root, covering
+  the root module and all seven child modules, and printing the diff for
+  anything misformatted
+- **`terraform init -backend=false`** followed by **`terraform validate`** in
+  `terraform/`, which checks syntax, type correctness and module input/output
+  wiring against the real provider schema
+
+The workflow needs **no AWS credentials and configures no secrets**, and it
+never runs `plan` or `apply` — `-backend=false` skips backend initialisation, so
+nothing in the job touches an AWS account or costs anything. It is pinned to
+Terraform **1.5.7**, the floor declared by `required_version` in
+`terraform/providers.tf`; pinning the minimum rather than the latest means CI
+proves that constraint is honest instead of silently depending on a newer
+feature than it admits.
 
 ### A note on TLS
 
