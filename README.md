@@ -9,13 +9,13 @@ rollback, hosts administered through Systems Manager Session Manager instead of
 SSH, data encrypted at rest with customer-managed KMS keys and in transit with
 enforced TLS, IAM roles scoped to the specific resources they touch, and every
 control observed by CloudTrail and continuously re-tested by AWS Config. It is
-the architecture stripped down to the parts that carry the compliance argument
-— a real system would add its application, its data model and its
-organisational safeguards on top — and it exists to be read as much as run.
+the architecture stripped down to the parts that carry the compliance
+argument (a real system would add its application, its data model and its
+organisational safeguards on top), and it exists to be read as much as run.
 
 > **This repository is provided as a reference architecture. Running
-> `terraform apply` will provision billable AWS resources — a NAT gateway, a
-> Multi-AZ RDS instance, an ALB and an EC2 Auto Scaling group among them —
+> `terraform apply` will provision billable AWS resources, among them a NAT
+> gateway, a Multi-AZ RDS instance, an ALB and an EC2 Auto Scaling group,
 > and it does not by itself make any system HIPAA compliant. Review and adjust
 > it for your account, your region and your Business Associate Addendum before
 > applying.**
@@ -59,14 +59,14 @@ Control-by-control mapping: **[docs/hipaa-safeguards-mapping.md](docs/hipaa-safe
 
 **CI/CD and release engineering**
 - Blue/green deployment that provisions a replacement fleet (`COPY_AUTO_SCALING_GROUP`) rather than mutating running hosts, so a rollback is a traffic shift and not a second deployment under pressure
-- Automatic rollback on `DEPLOYMENT_FAILURE` **and** `DEPLOYMENT_STOP_ON_ALARM`, wired to CloudWatch alarms on unhealthy hosts and 5xx rates — a release that deploys cleanly but behaves badly under real traffic still gets reverted
+- Automatic rollback on `DEPLOYMENT_FAILURE` **and** `DEPLOYMENT_STOP_ON_ALARM`, wired to CloudWatch alarms on unhealthy hosts and 5xx rates, so a release that deploys cleanly but behaves badly under real traffic still gets reverted
 - A `ValidateService` lifecycle hook that health-checks the new fleet *before* any production traffic moves, so a bad revision is caught at the cheapest possible point
 - Immutable, versioned artifacts in an encrypted S3 bucket; deployment bundles are addressed by object version, so "what is running in production?" has an exact answer
 - Graceful drain on `SIGTERM` and a `deregistration_delay` tuned so cutovers don't cut live requests
 
 **AWS CodeDeploy**
 - Application and deployment group targeting an ASG behind an ALB target group, with SNS notifications on success, failure, rollback and stop
-- A complete `appspec.yml` exercising all five lifecycle hooks — `ApplicationStop`, `BeforeInstall`, `AfterInstall`, `ApplicationStart`, `ValidateService` — with hooks written to fail loudly, since a non-zero exit is what triggers the rollback
+- A complete `appspec.yml` exercising all five lifecycle hooks (`ApplicationStop`, `BeforeInstall`, `AfterInstall`, `ApplicationStart`, `ValidateService`), with hooks written to fail loudly, since a non-zero exit is what triggers the rollback
 - A configurable blue-fleet termination wait that defines the rollback window
 - Deployment-time configuration fetched from Parameter Store using the instance's own role, so no secret is ever in the bundle
 
@@ -78,7 +78,7 @@ Control-by-control mapping: **[docs/hipaa-safeguards-mapping.md](docs/hipaa-safe
 
 **DevOps engineering practice**
 - Seven composable Terraform modules with explicit inputs and outputs, no hidden coupling, and a documented composition order
-- Least-privilege IAM where every policy carries a comment block explaining *why* it is scoped that way — including `kms:ViaService` conditions that stop a decrypt grant being reused across services, and a constrained `iam:PassRole` that closes the classic privilege-escalation path in a deployment role
+- Least-privilege IAM where every policy carries a comment block explaining *why* it is scoped that way, including `kms:ViaService` conditions that stop a decrypt grant being reused across services, and a constrained `iam:PassRole` that closes the classic privilege-escalation path in a deployment role
 - Confused-deputy protection (`aws:SourceAccount` / `aws:SourceArn`) on every service trust policy
 - Security posture asserted in code *and* continuously re-tested by AWS Config rules, so drift becomes a finding rather than an audit surprise
 - Passes `terraform fmt -recursive` and `terraform validate` clean
@@ -151,7 +151,7 @@ aws deploy create-deployment \
   --s3-location "bucket=$ARTIFACTS,key=releases/app.zip,bundleType=zip"
 ```
 
-And to get a shell on an instance — the only way there is one:
+And to get a shell on an instance, using the only route that exists:
 
 ```bash
 aws ssm start-session --target <instance-id>
@@ -161,7 +161,7 @@ No SSH key, no bastion, no VPN. The session is authenticated by IAM, gated on
 MFA, capped at an hour, and recorded to S3 and CloudWatch Logs.
 
 To tear everything down, note that `deletion_protection` is on for both the RDS
-instance and the ALB by default, and the CloudTrail bucket uses Object Lock —
+instance and the ALB by default, and the CloudTrail bucket uses Object Lock, so
 `terraform destroy` will fail until those are deliberately relaxed. That is the
 intended behaviour for anything holding audit records.
 
@@ -188,7 +188,7 @@ runs those same two checks on every push and pull request to `main`:
   wiring against the real provider schema
 
 The workflow needs **no AWS credentials and configures no secrets**, and it
-never runs `plan` or `apply` — `-backend=false` skips backend initialisation, so
+never runs `plan` or `apply`. `-backend=false` skips backend initialisation, so
 nothing in the job touches an AWS account or costs anything. It is pinned to
 Terraform **1.5.7**, the floor declared by `required_version` in
 `terraform/providers.tf`; pinning the minimum rather than the latest means CI
@@ -213,7 +213,7 @@ rather than left as a silent default.
 A default `terraform apply` provisions, among other things: a NAT gateway
 (~$32/month plus data processing), six interface VPC endpoints (~$7/month
 each), a Multi-AZ `db.t4g.medium` RDS instance, an ALB, and two `t3.small` EC2
-instances — plus CloudTrail data events and AWS Config recording, which are
+instances, plus CloudTrail data events and AWS Config recording, which are
 billed per event and per configuration item. Expect a few hundred dollars a
 month if left running. Set `single_nat_gateway = true` (the default) and reduce
 `asg_desired_capacity` and `db_multi_az` for a cheaper evaluation environment.
@@ -222,13 +222,13 @@ month if left running. Set `single_nat_gateway = true` (the default) and reduce
 
 This repository implements a subset of the **technical** safeguards in 45 CFR
 164.312 and touches a few related requirements in 164.308 and 164.316. It does
-not and cannot provide the administrative safeguards — risk analysis, workforce
-training, sanction policy, incident response, tested contingency plans — that
-HIPAA compliance also requires, and it is not legal advice or a certification of
-any kind. See the
+not and cannot provide the administrative safeguards that HIPAA compliance
+also requires (risk analysis, workforce training, sanction policy, incident
+response, tested contingency plans), and it is not legal advice or a
+certification of any kind. See the
 ["Deliberately not addressed"](docs/hipaa-safeguards-mapping.md#deliberately-not-addressed-here)
 section for an explicit list of the gaps.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
